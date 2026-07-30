@@ -1,14 +1,1 @@
-{
-    "scripts": [
-        {
-            "name": "WebNovel",
-            "fileName": "WebNovel",
-            "imageURL": "https://github.com/shosetsuorg/extensions/raw/dev/icons/Webnovels.png",
-            "id": 912,
-            "lang": "en",
-            "ver": "1.0.0",
-            "libVer": "1.0.0",
-            "md5": "a8f3b1427c62d0891d4021a5a7b63f2c"
-        }
-    ]
-}
+
