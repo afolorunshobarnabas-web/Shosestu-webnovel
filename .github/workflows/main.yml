@@ -1,90 +1,117 @@
-name: Test Shosetsu Extension
-
+# GitHub Actions conversion of your GitLab CI pipeline
+# - Job: build_extensions -> builds with Gradle (attempts assembleDebug, falls back to build)
+# - Job: test_parsers -> downloads artifacts and runs extension-tester.jar
 on:
   push:
-    branches: [ main, master ]
   pull_request:
-    branches: [ main, master ]
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
 jobs:
-  test-extension:
+  build_extensions:
+    name: Build and compile extensions
     runs-on: ubuntu-latest
-
     steps:
-    # 1. Grab your webnovel.lua file
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # 2. Setup Node.js to evaluate the endpoint connections
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-    # 3. Simulate and verify the Webnovel endpoints with anti-block headers
-    - name: Verify Webnovel API Endpoints
-      run: |
-        node -e "
-        const https = require('https');
-        
-        function testEndpoint(url) {
-          return new Promise((resolve, reject) => {
-            const parsedUrl = new URL(url);
-            
-            const options = {
-              hostname: parsedUrl.hostname,
-              path: parsedUrl.pathname + parsedUrl.search,
-              method: 'GET',
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Referer': 'https://webnovel.com',
-                'Origin': 'https://webnovel.com',
-                'Cache-Control': 'no-cache'
-              }
-            };
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-cache-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}
+          restore-keys: gradle-cache-${{ runner.os }}-
 
-            https.get(options, (res) => {
-              let data = '';
-              res.on('data', chunk => data += chunk);
-              res.on('end', () => {
-                if (res.statusCode === 200) {
-                  console.log('✓ Success fetching: ' + url.substring(0, 60) + '...');
-                  try {
-                    const parsed = JSON.parse(data);
-                    console.log('  ✓ Valid JSON received.');
-                    resolve();
-                  } catch(e) {
-                    console.log('  ✗ Failed parsing JSON response.');
-                    reject(e);
-                  }
-                } else {
-                  console.log('  ✗ HTTP Error Status: ' + res.statusCode);
-                  reject(new Error('Status ' + res.statusCode));
-                }
-              });
-            }).on('error', reject);
-          });
-        }
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew || true
 
-        async function run() {
-          try {
-            console.log('Testing Ranking List API with Browser Spoofing...');
-            await testEndpoint('https://webnovel.com');
-            
-            console.log('\nTesting Search API...');
-            await testEndpoint('https://webnovel.com');
-            
-            console.log('\nTesting Chapter Index API...');
-            await testEndpoint('https://webnovel.com');
-            
-            console.log('\nEverything is live and reachable! Your extension parameters are correct.');
-          } catch (err) {
-            console.error('\nVerification Failed:', err.message);
-            process.exit(1);
-          }
-        }
-        run();
-        "
-        
+      - name: Install Android SDK command-line tools (so assembleDebug can run)
+        # This installs minimal command-line SDK, platform-tools, build-tools, and a recent platform.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip qemu-user-static
+          export ANDROID_SDK_ROOT="${HOME}/android-sdk"
+          mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"
+          cd "${HOME}"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline.zip
+          unzip -q cmdline.zip -d "${ANDROID_SDK_ROOT}/cmdline-tools"
+          # Move to "latest" subdir expected by sdkmanager
+          mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
+          mv "${ANDROID_SDK_ROOT}/cmdline-tools"/cmdline-tools/* "${ANDROID_SDK_ROOT}/cmdline-tools/latest/" || true
+          export PATH="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools:${PATH}"
+          yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "platform-tools" "platforms;android-33" "build-tools;33.0.2" "cmdline-tools;latest"
+          yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses || true
+        shell: bash
+
+      - name: Build (assembleDebug || build)
+        run: |
+          ./gradlew assembleDebug || ./gradlew build
+        env:
+          ANDROID_SDK_ROOT: ${{ runner.home }}/android-sdk
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shosetsu-extensions-build
+          path: |
+            **/build/outputs/**/*.apk
+            **/build/libs/**/*.jar
+            bin/extension-tester.jar
+
+  test_parsers:
+    name: Run automated parser testing
+    runs-on: ubuntu-latest
+    needs: build_extensions
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: shosetsu-extensions-build
+          path: ./artifacts
+
+      - name: Make test server script executable
+        run: chmod +x ./test-server.sh || true
+
+      - name: Run extension tester - generate index
+        run: |
+          if [ -f "./artifacts/bin/extension-tester.jar" ]; then
+            java -jar ./artifacts/bin/extension-tester.jar --generate-index
+          elif [ -f "./bin/extension-tester.jar" ]; then
+            java -jar ./bin/extension-tester.jar --generate-index
+          else
+            echo "extension-tester.jar not found; failing job."
+            exit 1
+          fi
+
+      - name: Run extension tester - run listings for specific ID
+        run: |
+          if [ -f "./artifacts/bin/extension-tester.jar" ]; then
+            java -jar ./artifacts/bin/extension-tester.jar --id 982374105 --listings 1
+          else
+            java -jar ./bin/extension-tester.jar --id 982374105 --listings 1
+          fi
+
+      - name: Upload index.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: index.json
+          path: index.json
