@@ -21,7 +21,7 @@ jobs:
       with:
         node-version: '20'
 
-    # 3. Simulate and verify the Webnovel endpoints directly
+    # 3. Simulate and verify the Webnovel endpoints with anti-block headers
     - name: Verify Webnovel API Endpoints
       run: |
         node -e "
@@ -29,7 +29,23 @@ jobs:
         
         function testEndpoint(url) {
           return new Promise((resolve, reject) => {
-            https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+            const parsedUrl = new URL(url);
+            
+            const options = {
+              hostname: parsedUrl.hostname,
+              path: parsedUrl.pathname + parsedUrl.search,
+              method: 'GET',
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://webnovel.com',
+                'Origin': 'https://webnovel.com',
+                'Cache-Control': 'no-cache'
+              }
+            };
+
+            https.get(options, (res) => {
               let data = '';
               res.on('data', chunk => data += chunk);
               res.on('end', () => {
@@ -54,7 +70,7 @@ jobs:
 
         async function run() {
           try {
-            console.log('Testing Ranking List API...');
+            console.log('Testing Ranking List API with Browser Spoofing...');
             await testEndpoint('https://webnovel.com');
             
             console.log('\nTesting Search API...');
@@ -71,3 +87,4 @@ jobs:
         }
         run();
         "
+        
