@@ -2,38 +2,28 @@ name: Test Shosetsu Extension
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
-  test-extension:
+  test:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Pull your custom extension code from your repo
-    - name: Checkout custom extension
+    # Step 1: Download your repository code
+    - name: Checkout repository code
       uses: actions/checkout@v4
+
+    # Step 2: Install Lua on the runner
+    - name: Install Lua runtime
+      uses: leafo/gh-actions-lua@v10
       with:
-        path: custom-source
+        luaVersion: "5.4"
 
-    # 2. Clone the official Shosetsu extensions environment around it
-    - name: Clone Shosetsu Extensions Environment
-      run: |
-        git clone https://gitlab.com shosetsu-env
-
-    # 3. Setup Java 17 safely in the cloud container
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-
-    # 4. Inject your Lua file into the official testing structure
-    - name: Move and Run Dev Setup
-      run: |
-        cp custom-source/webnovel.lua shosetsu-env/
-        cd shosetsu-env
+    # Step 3: Run your tester script
+    - name: Run Extension Tester
+      run: lua tester.lua
         chmod +x ./dev-setup.sh
         ./dev-setup.sh
 
