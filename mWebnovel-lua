@@ -1,0 +1,107 @@
+-- ======================================================================
+-- EXTENSION METADATA
+-- ======================================================================
+local metadata = {
+    name = "WebNovel",
+    lang = "en",
+    ver = "1.0.0",
+    libVer = "1.0.0",
+    baseUrl = "https://webnovel.com",
+    apiUrl = "https://webnovel.com"
+}
+
+lang, ver, libVer = metadata.lang, metadata.ver, metadata.libVer
+
+-- ======================================================================
+-- 1. LIBRARY / POPULAR NOVELS (Listing Function)
+-- ======================================================================
+function getListing(page)
+    if page == nil or page < 1 then page = 1 end
+    local targetUrl = metadata.apiUrl .. "/bookstore/ranklist?rankType=1&pageNum=" .. tostring(page) .. "&pageSize=20"
+    local response = RequestDocument(GET(targetUrl, nil, nil))
+    local jsonRaw = json.decode(response:text())
+    local novelList = {}
+    
+    if jsonRaw and jsonRaw["data"] and jsonRaw["data"]["bookInfoList"] then
+        for _, v in ipairs(jsonRaw["data"]["bookInfoList"]) do
+            table.insert(novelList, Novel {
+                title = v["bookName"],
+                link = "/book/" .. tostring(v["bookId"]),
+                imageURL = "https://webnovel.com" .. tostring(v["bookId"]) .. "/600/600.jpg"
+            })
+        end
+    end
+    return novelList
+end
+getPopular = getListing
+
+-- ======================================================================
+-- 2. SEARCH FUNCTIONALITY
+-- ======================================================================
+function search(query, page)
+    if page == nil or page < 1 then page = 1 end
+    local encodedQuery = HttpUrlEncode(query)
+    local targetUrl = metadata.apiUrl .. "/search/list?keywords=" .. encodedQuery .. "&pageNum=" .. tostring(page) .. "&pageSize=20"
+    local response = RequestDocument(GET(targetUrl, nil, nil))
+    local jsonRaw = json.decode(response:text())
+    local searchResults = {}
+    
+    if jsonRaw and jsonRaw["data"] and jsonRaw["data"]["bookInfoList"] then
+        for _, v in ipairs(jsonRaw["data"]["bookInfoList"]) do
+            table.insert(searchResults, Novel {
+                title = v["bookName"],
+                link = "/book/" .. tostring(v["bookId"]),
+                imageURL = "https://webnovel.com" .. tostring(v["bookId"]) .. "/600/600.jpg"
+            })
+        end
+    end
+    return searchResults
+end
+
+-- ======================================================================
+-- 3. NOVEL DETAILS GENERATION
+-- ======================================================================
+function getNovelInfo(novelUrl)
+    local bookId = string.match(novelUrl, "book/([0-9]+)")
+    local targetUrl = metadata.apiUrl .. "/bookDetail/getDetail?bookId=" .. bookId
+    local response = RequestDocument(GET(targetUrl, nil, nil))
+    local jsonRaw = json.decode(response:text())
+    
+    if jsonRaw and jsonRaw["data"] then
+        local details = jsonRaw["data"]["bookInfo"]
+        return NovelDetails {
+            title = details["bookName"],
+            author = details["authorName"],
+            description = details["description"],
+            imageURL = "https://webnovel.com" .. bookId .. "/600/600.jpg",
+            status = details["comicStatus"] == 1 and "COMPLETED" or "ONGOING"
+        }
+    end
+    return nil
+end
+
+-- ======================================================================
+-- 4. CHAPTER LIST RESOLUTION
+-- ======================================================================
+function getChapterList(novelUrl)
+    local bookId = string.match(novelUrl, "book/([0-9]+)")
+    local targetUrl = metadata.apiUrl .. "/bookDetail/getChapterList?bookId=" .. bookId
+    local response = RequestDocument(GET(targetUrl, nil, nil))
+    local jsonRaw = json.decode(response:text())
+    local chapterList = {}
+    
+    if jsonRaw and jsonRaw["data"] and jsonRaw["data"]["volumeItems"] then
+        for _, volume in ipairs(jsonRaw["data"]["volumeItems"]) do
+            if volume["chapterItems"] then
+                for _, chap in ipairs(volume["chapterItems"]) do
+                    table.insert(chapterList, Chapter {
+                        name = chap["chapterName"],
+                        link = "/book/" .. bookId .. "/" .. tostring(chap["chapterId"]),
+                        scrapedTime = 0
+                    })
+                end
+            end
+        end
+    end
+    return chapterList
+end
