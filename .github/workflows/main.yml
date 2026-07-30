@@ -11,23 +11,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Pull the code from your repository
-    - name: Checkout code
+    # 1. Pull your custom extension code from your repo
+    - name: Checkout custom extension
       uses: actions/checkout@v4
+      with:
+        path: custom-source
 
-    # 2. Set up Java on the cloud server
+    # 2. Clone the official Shosetsu extensions environment around it
+    - name: Clone Shosetsu Extensions Environment
+      run: |
+        git clone https://gitlab.com shosetsu-env
+
+    # 3. Setup Java 17 safely in the cloud container
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
 
-    # 3. Download the actual executable tester file directly from Shosetsu's official GitLab bin
-    - name: Download Extension Tester Tool
+    # 4. Inject your Lua file into the official testing structure
+    - name: Move and Run Dev Setup
       run: |
-        curl -L -o extension-tester.jar https://gitlab.com
+        cp custom-source/webnovel.lua shosetsu-env/
+        cd shosetsu-env
+        chmod +x ./dev-setup.sh
+        ./dev-setup.sh
 
-    # 4. Execute the automated test and log results
-    - name: Run Test Simulation
+    # 5. Run the extension verification using the official test suite script
+    - name: Execute Extension Test Verification
       run: |
-        java -jar extension-tester.jar webnovel.lua
+        cd shosetsu-env
+        java -jar bin/extension-tester.jar webnovel.lua
+        
