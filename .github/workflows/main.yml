@@ -22,10 +22,10 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    # 3. Securely download the Shosetsu automated testing tool
+    # 3. Download the actual executable tester file directly from Shosetsu's official GitLab bin
     - name: Download Extension Tester Tool
       run: |
-        curl -L -o extension-tester.jar https://shosetsu.app
+        curl -L -o extension-tester.jar https://gitlab.com
 
     # 4. Execute the automated test and log results
     - name: Run Test Simulation
